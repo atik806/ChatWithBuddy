@@ -30,16 +30,22 @@ function Login() {
 
       if (!userData) {
         const displayName = email.split('@')[0];
-        await supabase.from("users").insert({
+        const { error: insertError } = await supabase.from("users").insert({
           id: data.user.id,
           displayName,
           email: data.user.email,
           createdAt: new Date().toISOString()
         });
+        
+        if (insertError) {
+          console.error("Insert error:", insertError);
+          throw insertError;
+        }
       }
       
       navigate("/chat");
     } catch (err) {
+      console.error("Login error:", err);
       setError(getErrorMessage(err.message));
     }
   };

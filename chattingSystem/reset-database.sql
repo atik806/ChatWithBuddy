@@ -1,75 +1,87 @@
--- Run this in your Supabase SQL Editor
+-- COMPLETE DATABASE RESET SCRIPT
+-- Run this in Supabase SQL Editor to completely reset your database
 
--- Drop existing tables to start fresh
+-- Step 1: Drop all existing policies
+DROP POLICY IF EXISTS "Users can view all profiles" ON users;
+DROP POLICY IF EXISTS "Users can update own profile" ON users;
+DROP POLICY IF EXISTS "Users can insert own profile" ON users;
+DROP POLICY IF EXISTS "Users can view own conversations" ON conversations;
+DROP POLICY IF EXISTS "Users can create conversations" ON conversations;
+DROP POLICY IF EXISTS "Users can update own conversations" ON conversations;
+DROP POLICY IF EXISTS "Users can view messages in their conversations" ON messages;
+DROP POLICY IF EXISTS "Users can insert messages" ON messages;
+
+-- Step 2: Drop all tables
 DROP TABLE IF EXISTS messages CASCADE;
 DROP TABLE IF EXISTS conversations CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
 
--- Users table
+-- Step 3: Create users table with correct column names
 CREATE TABLE users (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  displayName TEXT NOT NULL,
+  "displayName" TEXT NOT NULL,
   email TEXT NOT NULL,
-  avatarUrl TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  "avatarUrl" TEXT,
+  "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Conversations table
+-- Step 4: Create conversations table
 CREATE TABLE conversations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   participants UUID[] NOT NULL DEFAULT '{}',
-  lastMessage TEXT,
-  lastMessageTime TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  "lastMessage" TEXT,
+  "lastMessageTime" TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Messages table
+-- Step 5: Create messages table
 CREATE TABLE messages (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  conversationId UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-  senderId UUID NOT NULL,
-  senderName TEXT NOT NULL,
+  "conversationId" UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  "senderId" UUID NOT NULL,
+  "senderName" TEXT NOT NULL,
   text TEXT NOT NULL,
   timestamp BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT * 1000,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Enable Row Level Security
+-- Step 6: Enable Row Level Security
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
 
--- Policies for users
+-- Step 7: Create policies for users
 CREATE POLICY "Users can view all profiles" ON users FOR SELECT USING (true);
 CREATE POLICY "Users can update own profile" ON users FOR UPDATE USING (auth.uid() = id);
 CREATE POLICY "Users can insert own profile" ON users FOR INSERT WITH CHECK (true);
 
--- Policies for conversations
+-- Step 8: Create policies for conversations
 CREATE POLICY "Users can view own conversations" ON conversations FOR SELECT USING (auth.uid() = ANY(participants));
 CREATE POLICY "Users can create conversations" ON conversations FOR INSERT WITH CHECK (auth.uid() = ANY(participants));
 CREATE POLICY "Users can update own conversations" ON conversations FOR UPDATE USING (auth.uid() = ANY(participants));
 
--- Policies for messages
+-- Step 9: Create policies for messages
 CREATE POLICY "Users can view messages in their conversations" ON messages FOR SELECT USING (
   EXISTS (
     SELECT 1 FROM conversations 
-    WHERE id = messages.conversationId 
+    WHERE id = messages."conversationId" 
     AND auth.uid() = ANY(participants)
   )
 );
-CREATE POLICY "Users can insert messages" ON messages FOR INSERT WITH CHECK (auth.uid() = senderId);
+CREATE POLICY "Users can insert messages" ON messages FOR INSERT WITH CHECK (auth.uid() = "senderId");
 
--- Storage bucket for avatars
+-- Step 10: Create storage bucket for avatars
 INSERT INTO storage.buckets (id, name, public) VALUES ('avatars', 'avatars', true)
 ON CONFLICT (id) DO NOTHING;
 
--- Drop existing storage policies
+-- Step 11: Drop and recreate storage policies
 DROP POLICY IF EXISTS "Users can view avatars" ON storage.objects;
 DROP POLICY IF EXISTS "Users can upload avatars" ON storage.objects;
 DROP POLICY IF EXISTS "Users can delete own avatars" ON storage.objects;
 
--- Create new storage policies
 CREATE POLICY "Users can view avatars" ON storage.objects FOR SELECT USING (bucket_id = 'avatars');
 CREATE POLICY "Users can upload avatars" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'avatars' AND auth.uid() = (storage.foldername(name))[1]::uuid);
 CREATE POLICY "Users can delete own avatars" ON storage.objects FOR DELETE USING (bucket_id = 'avatars' AND auth.uid() = (storage.foldername(name))[1]::uuid);
+
+-- Done! Your database is now completely reset with the correct schema.

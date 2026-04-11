@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "./supabase";
 import { useNavigate, Link } from "react-router-dom";
 import { useTheme } from "./ThemeContext";
@@ -15,6 +15,7 @@ function Chat() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [messages, setMessages] = useState([]);
   const [message, setMessage] = useState("");
+  const messagesEndRef = useRef(null);
   const navigate = useNavigate();
   const { isDarkMode, toggleTheme } = useTheme();
 
@@ -50,24 +51,37 @@ function Chat() {
       fetchMessages(selectedChat.id);
       
       const channel = supabase
-        .channel(`messages:${selectedChat.id}`)
+        .channel(`messages-${selectedChat.id}`)
         .on('postgres_changes', { 
-          event: '*', 
+          event: 'INSERT', 
           schema: 'public', 
           table: 'messages',
           filter: `conversationId=eq.${selectedChat.id}`
         }, (payload) => {
-          if (payload.eventType === 'INSERT') {
-            setMessages(prev => [...prev, payload.new].sort((a, b) => a.timestamp - b.timestamp));
-          }
+          console.log("Real-time message received:", payload);
+          setMessages(prev => {
+            // Check if message already exists
+            if (prev.find(m => m.id === payload.new.id)) {
+              return prev;
+            }
+            return [...prev, payload.new].sort((a, b) => a.timestamp - b.timestamp);
+          });
         })
-        .subscribe();
+        .subscribe((status) => {
+          console.log("Subscription status:", status);
+        });
 
       return () => {
+        console.log("Unsubscribing from channel");
         supabase.removeChannel(channel);
       };
     }
   }, [selectedChat?.id]);
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   const fetchUserData = async (uid) => {
     try {
@@ -202,31 +216,73 @@ function Chat() {
   const sendMessage = async () => {
     if (!message.trim() || !selectedChat?.id) return;
     
+    const messageText = message.trim();
+    const tempMessage = {
+      id: `temp-${Date.now()}`,
+      conversationId: selectedChat.id,
+      senderId: user.id,
+      senderName: userData?.displayName || user.email?.split('@')[0] || "User",
+      text: messageText,
+      timestamp: Date.now(),
+      createdAt: new Date().toISOString()
+    };
+
+    // Immediately add message to UI
+    setMessages(prev => [...prev, tempMessage]);
+    setMessage("");
+    
     try {
-      const { error } = await supabase
+      console.log("Sending message:", {
+        conversationId: selectedChat.id,
+        senderId: user.id,
+        senderName: userData?.displayName || user.email?.split('@')[0] || "User",
+        text: messageText,
+        timestamp: Date.now()
+      });
+
+      const { data, error } = await supabase
         .from("messages")
         .insert({
           conversationId: selectedChat.id,
           senderId: user.id,
           senderName: userData?.displayName || user.email?.split('@')[0] || "User",
-          text: message.trim(),
+          text: messageText,
           timestamp: Date.now()
-        });
+        })
+        .select()
+        .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error("Insert message error:", error);
+        // Remove temp message on error
+        setMessages(prev => prev.filter(m => m.id !== tempMessage.id));
+        alert(`Failed to send message: ${error.message}`);
+        return;
+      }
 
-      await supabase
+      console.log("Message inserted:", data);
+
+      // Replace temp message with real one
+      setMessages(prev => prev.map(m => m.id === tempMessage.id ? data : m));
+
+      const { error: updateError } = await supabase
         .from("conversations")
         .update({
-          lastMessage: message.trim(),
+          lastMessage: messageText,
           lastMessageTime: new Date().toISOString()
         })
         .eq("id", selectedChat.id);
 
-      setMessage("");
+      if (updateError) {
+        console.error("Update conversation error:", updateError);
+      }
+
       await fetchConversations(user.id);
     } catch (err) {
       console.error("Error sending message:", err);
+      // Remove temp message on error
+      setMessages(prev => prev.filter(m => m.id !== tempMessage.id));
+      alert(`Failed to send message: ${err.message}`);
     }
   };
 
@@ -374,19 +430,22 @@ function Chat() {
                   <p>No messages yet. Say hello!</p>
                 </div>
               ) : (
-                messages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className={`message ${msg.senderId === user.id ? 'sent' : 'received'}`}
-                  >
-                    <div className="message-content">
-                      <p>{msg.text}</p>
-                      <span className="message-time">
-                        {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
+                <>
+                  {messages.map((msg) => (
+                    <div
+                      key={msg.id}
+                      className={`message ${msg.senderId === user.id ? 'sent' : 'received'}`}
+                    >
+                      <div className="message-content">
+                        <p>{msg.text}</p>
+                        <span className="message-time">
+                          {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  ))}
+                  <div ref={messagesEndRef} />
+                </>
               )}
             </div>
 

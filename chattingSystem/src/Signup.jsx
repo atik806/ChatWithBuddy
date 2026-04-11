@@ -56,12 +56,17 @@ function Signup() {
       if (error) throw error;
 
       if (data.user) {
-        await supabase.from("users").insert({
+        const { error: insertError } = await supabase.from("users").insert({
           id: data.user.id,
           displayName,
           email,
           createdAt: new Date().toISOString()
         });
+        
+        if (insertError) {
+          console.error("Insert error:", insertError);
+          throw insertError;
+        }
       }
       
       setSuccess("Account created successfully! Please check your email to verify.");
@@ -69,6 +74,7 @@ function Signup() {
         navigate("/chat");
       }, 2000);
     } catch (err) {
+      console.error("Signup error:", err);
       setError(getErrorMessage(err.message));
     } finally {
       setLoading(false);
@@ -101,7 +107,7 @@ function Signup() {
     if (message.includes("Invalid email")) return "Please enter a valid email address.";
     if (message.includes("Password")) return "Password is too weak. Use at least 6 characters.";
     if (message.includes("network") || message.includes("fetch")) return "Network error. Please check your internet connection.";
-    return "Signup failed. Please try again.";
+    return `Signup failed: ${message}`;
   };
 
   return (
