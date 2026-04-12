@@ -12,7 +12,7 @@
 }
 
 .sidebar {
-  width: 350px;
+  width: 400px;
   background: var(--card-bg);
   border-right: 1px solid var(--border-color);
   display: flex;
@@ -23,10 +23,25 @@
 .user-profile {
   display: flex;
   align-items: center;
-  padding: 20px;
+  padding: 16px;
   background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-end) 100%);
   color: white;
+  min-height: 80px;
   gap: 12px;
+}
+
+.user-profile>.avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 16px;
+  flex-shrink: 0;
 }
 
 .avatar {
@@ -51,76 +66,78 @@
 
 .user-info {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .user-info h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.4;
 }
 
 .user-info p {
-  margin: 4px 0 0 0;
-  font-size: 12px;
+  margin: 2px 0 0 0;
+  font-size: 11px;
   opacity: 0.9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.4;
 }
 
 .user-actions {
   display: flex;
-  gap: 8px;
+  flex-direction: row;
+  gap: 6px;
   flex-shrink: 0;
-}
-
-.logout-btn {
-  background: rgba(255, 255, 255, 0.2);
-  border: none;
-  border-radius: 8px;
-  padding: 8px;
-  cursor: pointer;
-  color: white;
-  transition: background 0.3s;
-  display: flex;
   align-items: center;
-  justify-content: center;
+  flex-wrap: nowrap;
 }
 
-.logout-btn:hover {
-  background: rgba(255, 255, 255, 0.3);
+.profile-btn,
+.theme-toggle,
+.user-actions .logout-btn {
+  background: rgba(255, 255, 255, 0.2) !important;
+  border: none !important;
+  border-radius: 8px !important;
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+  min-height: 32px !important;
+  max-width: 32px !important;
+  max-height: 32px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  cursor: pointer !important;
+  color: white !important;
+  transition: background 0.3s !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-decoration: none !important;
+  flex-shrink: 0 !important;
+  box-sizing: border-box !important;
 }
 
-.theme-toggle {
-  background: rgba(255, 255, 255, 0.2);
-  border: none;
-  border-radius: 8px;
-  padding: 8px;
-  cursor: pointer;
-  color: var(--icon-color);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.3s, color 0.3s;
+.profile-btn:hover,
+.theme-toggle:hover,
+.user-actions .logout-btn:hover {
+  background: rgba(255, 255, 255, 0.3) !important;
 }
 
-.theme-toggle:hover {
-  background: rgba(255, 255, 255, 0.3);
-}
-
-.profile-btn {
-  background: rgba(255, 255, 255, 0.2);
-  border: none;
-  border-radius: 8px;
-  padding: 8px;
-  cursor: pointer;
-  color: white;
-  transition: background 0.3s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-decoration: none;
-}
-
-.profile-btn:hover {
-  background: rgba(255, 255, 255, 0.3);
+.profile-btn svg,
+.theme-toggle svg,
+.user-actions .logout-btn svg {
+  width: 16px !important;
+  height: 16px !important;
+  display: block !important;
+  pointer-events: none !important;
+  flex-shrink: 0 !important;
 }
 
 .search-bar {
@@ -479,14 +496,305 @@
   margin: 0;
 }
 
+/* Responsive Design */
+
+/* Tablet and below */
+@media (max-width: 1024px) {
+  .sidebar {
+    width: 320px;
+  }
+
+  .user-profile {
+    padding: 12px;
+  }
+
+  .messages-container {
+    padding: 16px;
+  }
+
+  .message-content {
+    max-width: 80%;
+  }
+}
+
+/* Mobile landscape and below */
 @media (max-width: 768px) {
   .chat-dashboard {
     flex-direction: column;
+    position: relative;
   }
-  
+
   .sidebar {
     width: 100%;
-    height: auto;
-    max-height: 50vh;
+    max-width: 100%;
+    height: 100vh;
+    position: relative;
+    z-index: 1;
+  }
+
+  .user-profile {
+    padding: 12px;
+    min-height: 72px;
+    gap: 8px;
+  }
+
+  .user-profile>.avatar {
+    width: 40px;
+    height: 40px;
+    font-size: 14px;
+  }
+
+  .user-info {
+    flex: 1;
+    min-width: 0;
+    margin-right: 0;
+  }
+
+  .user-info h3 {
+    font-size: 12px;
+  }
+
+  .user-info p {
+    font-size: 9px;
+  }
+
+  .user-actions {
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .profile-btn,
+  .theme-toggle,
+  .user-actions .logout-btn {
+    width: 28px !important;
+    height: 28px !important;
+    min-width: 28px !important;
+    min-height: 28px !important;
+    max-width: 28px !important;
+    max-height: 28px !important;
+    border-radius: 6px !important;
+  }
+
+  .profile-btn svg,
+  .theme-toggle svg,
+  .user-actions .logout-btn svg {
+    width: 14px !important;
+    height: 14px !important;
+  }
+
+  .chat-area {
+    width: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    z-index: 2;
+    background: var(--bg-primary);
+    display: none;
+  }
+
+  .chat-area.active {
+    display: flex;
+  }
+
+  .chat-header {
+    padding: 12px 16px;
+  }
+
+  .messages-container {
+    padding: 12px;
+  }
+
+  .message-input-container {
+    padding: 12px 16px;
+  }
+
+  .message-content {
+    max-width: 85%;
+  }
+
+  .empty-state h2 {
+    font-size: 20px;
+  }
+
+  .empty-state svg {
+    width: 60px;
+    height: 60px;
+  }
+}
+
+/* Mobile portrait */
+@media (max-width: 480px) {
+  .sidebar {
+    width: 100%;
+  }
+
+  .user-profile {
+    padding: 12px;
+    min-height: 72px;
+    gap: 10px;
+  }
+
+  .user-profile>.avatar,
+  .avatar {
+    width: 42px;
+    height: 42px;
+    font-size: 14px;
+  }
+
+  .user-info h3 {
+    font-size: 12px;
+  }
+
+  .user-info p {
+    font-size: 10px;
+  }
+
+  .user-actions {
+    gap: 5px;
+  }
+
+  .profile-btn,
+  .theme-toggle,
+  .user-actions .logout-btn {
+    width: 30px !important;
+    height: 30px !important;
+    min-width: 30px !important;
+    min-height: 30px !important;
+    max-width: 30px !important;
+    max-height: 30px !important;
+  }
+
+  .profile-btn svg,
+  .theme-toggle svg,
+  .user-actions .logout-btn svg {
+    width: 15px !important;
+    height: 15px !important;
+  }
+
+  .search-bar {
+    padding: 10px;
+  }
+
+  .search-bar input {
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+
+  .conversations-header {
+    padding: 12px 16px 6px;
+  }
+
+  .conversation-item {
+    padding: 10px 16px;
+  }
+
+  .chat-header {
+    padding: 10px 12px;
+  }
+
+  .chat-user-info h3 {
+    font-size: 14px;
+  }
+
+  .chat-user-info p {
+    font-size: 11px;
+  }
+
+  .messages-container {
+    padding: 10px;
+  }
+
+  .message-content {
+    max-width: 90%;
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+
+  .message-time {
+    font-size: 9px;
+  }
+
+  .message-input-container {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .message-input-container input {
+    padding: 10px 14px;
+    font-size: 13px;
+  }
+
+  .send-btn {
+    width: 40px;
+    height: 40px;
+  }
+
+  .send-btn svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .empty-state h2 {
+    font-size: 18px;
+  }
+
+  .empty-state p {
+    font-size: 13px;
+  }
+
+  .empty-state svg {
+    width: 50px;
+    height: 50px;
+  }
+}
+
+/* Extra small mobile */
+@media (max-width: 360px) {
+  .sidebar {
+    width: 100%;
+  }
+
+  .user-profile {
+    padding: 10px;
+    min-height: 68px;
+    gap: 8px;
+  }
+
+  .user-profile>.avatar,
+  .avatar {
+    width: 38px;
+    height: 38px;
+    font-size: 13px;
+  }
+
+  .user-info h3 {
+    font-size: 11px;
+  }
+
+  .user-info p {
+    font-size: 9px;
+  }
+
+  .user-actions {
+    gap: 4px;
+  }
+
+  .profile-btn,
+  .theme-toggle,
+  .user-actions .logout-btn {
+    width: 28px !important;
+    height: 28px !important;
+    min-width: 28px !important;
+    min-height: 28px !important;
+    max-width: 28px !important;
+    max-height: 28px !important;
+  }
+
+  .profile-btn svg,
+  .theme-toggle svg,
+  .user-actions .logout-btn svg {
+    width: 14px !important;
+    height: 14px !important;
   }
 }

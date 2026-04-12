@@ -162,3 +162,75 @@
 .signup-link a:hover {
   text-decoration: underline;
 }
+
+/* Re
+sponsive Design */
+
+/* Tablet */
+@media (max-width: 768px) {
+  .login-container {
+    padding: 16px;
+  }
+  
+  .login-box {
+    padding: 32px 24px;
+    max-width: 100%;
+  }
+  
+  .login-box h1 {
+    font-size: 24px;
+  }
+  
+  .theme-toggle {
+    top: 16px;
+    right: 16px;
+    padding: 8px;
+  }
+}
+
+/* Mobile */
+@media (max-width: 480px) {
+  .login-container {
+    padding: 12px;
+  }
+  
+  .login-box {
+    padding: 24px 20px;
+    border-radius: 10px;
+  }
+  
+  .login-box h1 {
+    font-size: 22px;
+  }
+  
+  .subtitle {
+    font-size: 14px;
+    margin-bottom: 20px;
+  }
+  
+  .form-group input {
+    padding: 12px 14px;
+    font-size: 15px;
+  }
+  
+  .login-btn {
+    padding: 12px;
+    font-size: 15px;
+  }
+  
+  .google-btn {
+    padding: 11px;
+    font-size: 15px;
+  }
+  
+  .theme-toggle {
+    top: 12px;
+    right: 12px;
+    padding: 8px;
+  }
+  
+  .theme-toggle svg {
+    width: 18px;
+    height: 18px;
+  }
+}
