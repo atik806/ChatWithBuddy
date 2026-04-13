@@ -36,6 +36,9 @@ CREATE TABLE messages (
   sender_name TEXT NOT NULL,
   text TEXT,
   image_url TEXT,
+  file_url TEXT,
+  file_name TEXT,
+  file_size BIGINT,
   timestamp BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT * 1000,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -98,6 +101,9 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO storage.buckets (id, name, public) VALUES ('chat-images', 'chat-images', true)
 ON CONFLICT (id) DO NOTHING;
 
+INSERT INTO storage.buckets (id, name, public) VALUES ('chat-files', 'chat-files', true)
+ON CONFLICT (id) DO NOTHING;
+
 -- ============================================
 -- STORAGE POLICIES
 -- ============================================
@@ -107,10 +113,18 @@ DROP POLICY IF EXISTS "Users can upload avatars" ON storage.objects;
 DROP POLICY IF EXISTS "Users can delete own avatars" ON storage.objects;
 DROP POLICY IF EXISTS "Users can view chat images" ON storage.objects;
 DROP POLICY IF EXISTS "Users can upload chat images" ON storage.objects;
+DROP POLICY IF EXISTS "Users can view chat files" ON storage.objects;
+DROP POLICY IF EXISTS "Users can upload chat files" ON storage.objects;
 
 CREATE POLICY "Users can view avatars" ON storage.objects FOR SELECT USING (bucket_id = 'avatars');
 CREATE POLICY "Users can upload avatars" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'avatars' AND auth.role() = 'authenticated');
 CREATE POLICY "Users can delete own avatars" ON storage.objects FOR DELETE USING (bucket_id = 'avatars' AND auth.role() = 'authenticated');
+
+CREATE POLICY "Users can view chat images" ON storage.objects FOR SELECT USING (bucket_id = 'chat-images');
+CREATE POLICY "Users can upload chat images" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'chat-images' AND auth.role() = 'authenticated');
+
+CREATE POLICY "Users can view chat files" ON storage.objects FOR SELECT USING (bucket_id = 'chat-files');
+CREATE POLICY "Users can upload chat files" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'chat-files' AND auth.role() = 'authenticated');
 
 CREATE POLICY "Users can view chat images" ON storage.objects FOR SELECT USING (bucket_id = 'chat-images');
 CREATE POLICY "Users can upload chat images" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'chat-images' AND auth.role() = 'authenticated');

@@ -18,8 +18,10 @@ function Chat() {
   const [messages, setMessages] = useState([]);
   const [message, setMessage] = useState("");
   const [imageUploading, setImageUploading] = useState(false);
+  const [fileUploading, setFileUploading] = useState(false);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
+  const docInputRef = useRef(null);
   const { isDarkMode, toggleTheme } = useTheme();
 
   // Fetch user profile
@@ -56,36 +58,49 @@ function Chat() {
   useEffect(() => {
     if (!user) return;
     const init = async () => {
-      await Promise.all([
-        fetchUserData(user.id),
-        fetchConversations(user.id)
-      ]);
+      await Promise.all([fetchUserData(user.id), fetchConversations(user.id)]);
       setLoading(false);
     };
     init();
+
+    // Re-fetch conversations when tab becomes active again
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        fetchConversations(user.id);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, [user, fetchUserData, fetchConversations]);
 
   // Real-time messages subscription
   useEffect(() => {
-    if (!selectedChat?.id) return;
+    if (!selectedChat?.id || !user?.id) return;
 
     fetchMessages(selectedChat.id);
 
-    // Mark as read - directly update DB and state without relying on stale conversations
-    if (user?.id) {
-      supabase
+    // Clear only current user's unread count
+    const clearUnread = async () => {
+      const { data } = await supabase
         .from("conversations")
         .select("unreadCount")
         .eq("id", selectedChat.id)
-        .single()
-        .then(({ data }) => {
-          if (data?.unreadCount?.[user.id] > 0) {
-            const updated = { ...(data.unreadCount || {}), [user.id]: 0 };
-            supabase.from("conversations").update({ unreadCount: updated }).eq("id", selectedChat.id);
-            setConversations(prev => prev.map(c => c.id === selectedChat.id ? { ...c, unreadCount: updated } : c));
-          }
-        });
-    }
+        .single();
+
+      const current = data?.unreadCount || {};
+      if (current[user.id] > 0) {
+        const updated = { ...current, [user.id]: 0 };
+        await supabase.from("conversations").update({ unreadCount: updated }).eq("id", selectedChat.id);
+      }
+      // Always clear in UI
+      setConversations(prev => prev.map(c =>
+        c.id === selectedChat.id
+          ? { ...c, unreadCount: { ...(c.unreadCount || {}), [user.id]: 0 } }
+          : c
+      ));
+    };
+
+    clearUnread();
 
     const channel = supabase
       .channel(`messages-${selectedChat.id}`)
@@ -99,12 +114,9 @@ function Chat() {
           if (prev.find(m => m.id === payload.new.id)) return prev;
           return [...prev, payload.new].sort((a, b) => a.timestamp - b.timestamp);
         });
-        // Mark as read when new message arrives in open chat
-        if (user?.id && payload.new.sender_id !== user.id) {
-          supabase.from("conversations")
-            .update({ unreadCount: {} })
-            .eq("id", selectedChat.id);
-          setConversations(prev => prev.map(c => c.id === selectedChat.id ? { ...c, unreadCount: {} } : c));
+        // Auto-clear when receiving a message in the open chat
+        if (payload.new.sender_id !== user.id) {
+          clearUnread();
         }
       })
       .subscribe();
@@ -124,15 +136,6 @@ function Chat() {
       .eq("conversation_id", convoId)
       .order("timestamp", { ascending: true });
     setMessages(data || []);
-  };
-
-  const markAsRead = (convoId) => {
-    if (!user?.id) return;
-    const convo = conversations.find(c => c.id === convoId);
-    if (!convo?.unreadCount?.[user.id]) return;
-    const updated = { ...(convo.unreadCount || {}), [user.id]: 0 };
-    supabase.from("conversations").update({ unreadCount: updated }).eq("id", convoId);
-    setConversations(prev => prev.map(c => c.id === convoId ? { ...c, unreadCount: updated } : c));
   };
 
   const handleSearch = async (query) => {
@@ -269,8 +272,86 @@ function Chat() {
     }
   };
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
+  const handleFileSelect = async (e) => {
+    const file = e.target.files[0];
+    if (!file || !selectedChat?.id) return;
+
+    if (file.size > 25 * 1024 * 1024) { alert("File must be less than 25MB"); return; }
+
+    setFileUploading(true);
+    const senderName = userData?.displayName || user.email?.split("@")[0] || "User";
+
+    try {
+      const fileExt = file.name.split(".").pop();
+      const filePath = `${selectedChat.id}/${user.id}-${Date.now()}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage.from("chat-files").upload(filePath, file);
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage.from("chat-files").getPublicUrl(filePath);
+
+      const temp = {
+        id: `temp-${Date.now()}`,
+        conversation_id: selectedChat.id,
+        sender_id: user.id,
+        sender_name: senderName,
+        text: null,
+        image_url: null,
+        file_url: publicUrl,
+        file_name: file.name,
+        file_size: file.size,
+        timestamp: Date.now(),
+      };
+      setMessages(prev => [...prev, temp]);
+
+      const { data, error } = await supabase
+        .from("messages")
+        .insert({
+          conversation_id: selectedChat.id,
+          sender_id: user.id,
+          sender_name: senderName,
+          text: null,
+          image_url: null,
+          file_url: publicUrl,
+          file_name: file.name,
+          file_size: file.size,
+          timestamp: Date.now()
+        })
+        .select().single();
+
+      if (error) throw error;
+      setMessages(prev => prev.map(m => m.id === temp.id ? data : m));
+
+      const otherUserId = selectedChat.participants?.find(p => p !== user.id);
+      const convo = conversations.find(c => c.id === selectedChat.id);
+      const unread = { ...(convo?.unreadCount || {}), [otherUserId]: ((convo?.unreadCount?.[otherUserId] || 0) + 1) };
+
+      await supabase.from("conversations").update({
+        lastMessage: `📎 ${file.name}`,
+        lastMessageTime: new Date().toISOString(),
+        unreadCount: unread
+      }).eq("id", selectedChat.id);
+
+      setConversations(prev => prev.map(c => c.id === selectedChat.id
+        ? { ...c, lastMessage: `📎 ${file.name}`, lastMessageTime: new Date().toISOString(), unreadCount: unread }
+        : c
+      ));
+    } catch (err) {
+      console.error("File send error:", err);
+      alert(`Failed to send file: ${err.message}`);
+    } finally {
+      setFileUploading(false);
+      e.target.value = "";
+    }
+  };
+
+  const formatFileSize = (bytes) => {
+    if (!bytes) return "";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const handleLogout = async () => {    await supabase.auth.signOut();
     // AuthContext will detect session change and ProtectedRoute will redirect
   };
 
@@ -282,7 +363,7 @@ function Chat() {
   if (loading) return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "var(--bg-primary)", color: "var(--text-muted)", flexDirection: "column", gap: "16px" }}>
       <svg viewBox="0 0 24 24" width="40" height="40" fill="var(--gradient-start)" className="spin">
-        <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
+        <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z" />
       </svg>
       <span style={{ fontSize: "14px" }}>Loading...</span>
     </div>
@@ -304,19 +385,19 @@ function Chat() {
           <div className="user-actions">
             <Link to="/profile" className="profile-btn" title="Profile">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-                <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
               </svg>
             </Link>
             <button className="theme-toggle" onClick={toggleTheme} title="Toggle Theme">
               {isDarkMode ? (
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zM2 13h2c.55 0 1-.45 1-1s-.45-1-1-1H2c-.55 0-1 .45-1 1s.45 1 1 1zm18 0h2c.55 0 1-.45 1-1s-.45-1-1-1h-2c-.55 0-1 .45-1 1s.45 1 1 1zM11 2v2c0 .55.45 1 1 1s1-.45 1-1V2c0-.55-.45-1-1-1s-1 .45-1 1zm0 18v2c0 .55.45 1 1 1s1-.45 1-1v-2c0-.55-.45-1-1-1s-1 .45-1 1zM5.99 4.58c-.39-.39-1.03-.39-1.41 0-.39.39-.39 1.03 0 1.41l1.06 1.06c.39.39 1.03.39 1.41 0s.39-1.03 0-1.41L5.99 4.58zm12.37 12.37c-.39-.39-1.03-.39-1.41 0-.39.39-.39 1.03 0 1.41l1.06 1.06c.39.39 1.03.39 1.41 0 .39-.39.39-1.03 0-1.41l-1.06-1.06zm1.06-10.96c.39-.39.39-1.03 0-1.41-.39-.39-1.03-.39-1.41 0l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06zM7.05 18.36c.39-.39.39-1.03 0-1.41-.39-.39-1.03-.39-1.41 0l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06z"/></svg>
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zM2 13h2c.55 0 1-.45 1-1s-.45-1-1-1H2c-.55 0-1 .45-1 1s.45 1 1 1zm18 0h2c.55 0 1-.45 1-1s-.45-1-1-1h-2c-.55 0-1 .45-1 1s.45 1 1 1zM11 2v2c0 .55.45 1 1 1s1-.45 1-1V2c0-.55-.45-1-1-1s-1 .45-1 1zm0 18v2c0 .55.45 1 1 1s1-.45 1-1v-2c0-.55-.45-1-1-1s-1 .45-1 1zM5.99 4.58c-.39-.39-1.03-.39-1.41 0-.39.39-.39 1.03 0 1.41l1.06 1.06c.39.39 1.03.39 1.41 0s.39-1.03 0-1.41L5.99 4.58zm12.37 12.37c-.39-.39-1.03-.39-1.41 0-.39.39-.39 1.03 0 1.41l1.06 1.06c.39.39 1.03.39 1.41 0 .39-.39.39-1.03 0-1.41l-1.06-1.06zm1.06-10.96c.39-.39.39-1.03 0-1.41-.39-.39-1.03-.39-1.41 0l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06zM7.05 18.36c.39-.39.39-1.03 0-1.41-.39-.39-1.03-.39-1.41 0l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06z" /></svg>
               ) : (
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36-.98 1.37-2.58 2.26-4.4 2.26-2.98 0-5.4-2.42-5.4-5.4 0-1.81.89-3.42 2.26-4.4-.44-.06-.9-.1-1.36-.1z"/></svg>
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36-.98 1.37-2.58 2.26-4.4 2.26-2.98 0-5.4-2.42-5.4-5.4 0-1.81.89-3.42 2.26-4.4-.44-.06-.9-.1-1.36-.1z" /></svg>
               )}
             </button>
             <button className="logout-btn" onClick={handleLogout} title="Logout">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-                <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
+                <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z" />
               </svg>
             </button>
           </div>
@@ -370,7 +451,14 @@ function Chat() {
                 <div
                   key={convo.id}
                   className={`conversation-item ${selectedChat?.id === convo.id ? "active" : ""}`}
-                  onClick={() => { setSelectedChat(convo); markAsRead(convo.id); }}
+                  onClick={() => {
+                    setSelectedChat(convo);
+                    setConversations(prev => prev.map(c =>
+                      c.id === convo.id
+                        ? { ...c, unreadCount: { ...(c.unreadCount || {}), [user.id]: 0 } }
+                        : c
+                    ));
+                  }}
                 >
                   <div className="avatar">
                     {convo.otherUser?.avatarUrl ? (
@@ -421,6 +509,23 @@ function Chat() {
                           <div className="message-image">
                             <img src={msg.image_url} alt="Shared image" onClick={() => window.open(msg.image_url, "_blank")} />
                           </div>
+                        ) : msg.file_url ? (
+                          <a className="message-file" href={msg.file_url} target="_blank" rel="noopener noreferrer" download={msg.file_name}>
+                            <div className="file-icon">
+                              <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+                                <path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/>
+                              </svg>
+                            </div>
+                            <div className="file-info">
+                              <span className="file-name">{msg.file_name}</span>
+                              <span className="file-size">{formatFileSize(msg.file_size)}</span>
+                            </div>
+                            <div className="file-download">
+                              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                                <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+                              </svg>
+                            </div>
+                          </a>
                         ) : <p>{msg.text}</p>}
                         <span className="message-time">
                           {new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
@@ -435,11 +540,20 @@ function Chat() {
 
             <div className="message-input-container">
               <input type="file" accept="image/*" ref={fileInputRef} onChange={handleImageSelect} style={{ display: "none" }} />
-              <button className="image-btn" onClick={() => fileInputRef.current?.click()} disabled={imageUploading} title="Send image">
+              <input type="file" ref={docInputRef} onChange={handleFileSelect} style={{ display: "none" }}
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.mp4,.mp3,.csv" />
+              <button className="image-btn" onClick={() => fileInputRef.current?.click()} disabled={imageUploading || fileUploading} title="Send image">
                 {imageUploading ? (
-                  <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" className="spin"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+                  <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" className="spin"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z" /></svg>
                 ) : (
-                  <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+                  <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z" /></svg>
+                )}
+              </button>
+              <button className="image-btn" onClick={() => docInputRef.current?.click()} disabled={imageUploading || fileUploading} title="Send file">
+                {fileUploading ? (
+                  <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" className="spin"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z" /></svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11z" /></svg>
                 )}
               </button>
               <input
@@ -449,15 +563,15 @@ function Chat() {
                 onChange={(e) => setMessage(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
               />
-              <button className="send-btn" onClick={sendMessage} disabled={imageUploading}>
-                <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+              <button className="send-btn" onClick={sendMessage} disabled={imageUploading || fileUploading}>
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" /></svg>
               </button>
             </div>
           </>
         ) : (
           <div className="no-chat-selected">
             <div className="empty-state">
-              <svg viewBox="0 0 24 24" width="80" height="80" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
+              <svg viewBox="0 0 24 24" width="80" height="80" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z" /></svg>
               <h2>Welcome to Chat</h2>
               <p>Select a conversation or search for users to start chatting</p>
             </div>
