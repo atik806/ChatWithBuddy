@@ -146,5 +146,25 @@ CREATE POLICY "Users can upload chat images" ON storage.objects FOR INSERT WITH 
 CREATE POLICY "Users can view chat files" ON storage.objects FOR SELECT USING (bucket_id = 'chat-files');
 CREATE POLICY "Users can upload chat files" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'chat-files' AND auth.role() = 'authenticated');
 
-CREATE POLICY "Users can view chat images" ON storage.objects FOR SELECT USING (bucket_id = 'chat-images');
-CREATE POLICY "Users can upload chat images" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'chat-images' AND auth.role() = 'authenticated');
+-- ============================================
+-- AUTO DELETE OLD MEDIA (15 DAYS)
+-- ============================================
+
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+
+CREATE OR REPLACE FUNCTION delete_old_media()
+RETURNS void
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  DELETE FROM messages 
+  WHERE (image_url IS NOT NULL OR file_url IS NOT NULL)
+  AND created_at < NOW() - INTERVAL '15 days';
+END;
+$$;
+
+SELECT cron.schedule(
+  'delete-old-media',
+  '0 3 * * *',
+  'SELECT delete_old_media()'
+);

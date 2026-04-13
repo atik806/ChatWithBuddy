@@ -84,4 +84,28 @@ CREATE POLICY "Users can view avatars" ON storage.objects FOR SELECT USING (buck
 CREATE POLICY "Users can upload avatars" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'avatars' AND auth.uid() = (storage.foldername(name))[1]::uuid);
 CREATE POLICY "Users can delete own avatars" ON storage.objects FOR DELETE USING (bucket_id = 'avatars' AND auth.uid() = (storage.foldername(name))[1]::uuid);
 
+-- Step 12: Enable pg_cron extension for scheduled jobs
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+
+-- Step 13: Create function to delete old messages with media (older than 15 days)
+CREATE OR REPLACE FUNCTION delete_old_media()
+RETURNS void
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  -- Delete messages with images or files older than 15 days
+  DELETE FROM messages 
+  WHERE (image_url IS NOT NULL OR file_url IS NOT NULL)
+  AND created_at < NOW() - INTERVAL '15 days';
+END;
+$$;
+
+-- Step 14: Schedule the cleanup job to run daily at 3:00 AM UTC
+SELECT cron.schedule(
+  'delete-old-media',
+  '0 3 * * *',
+  'SELECT delete_old_media()'
+);
+
 -- Done! Your database is now completely reset with the correct schema.
+-- Messages with images and files older than 15 days will now be automatically deleted daily at 3 AM UTC.
