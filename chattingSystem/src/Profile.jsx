@@ -2,13 +2,13 @@ import { useState, useEffect } from "react";
 import { supabase } from "./supabase";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "./ThemeContext";
+import { useAuth } from "./AuthContext";
 import "./Profile.css";
 
 function Profile() {
-  const [user, setUser] = useState(null);
+  const { user } = useAuth();
   const [userData, setUserData] = useState(null);
   const [displayName, setDisplayName] = useState("");
-  const [avatar, setAvatar] = useState(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -16,17 +16,8 @@ function Profile() {
   const { isDarkMode, toggleTheme } = useTheme();
 
   useEffect(() => {
-    const getSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        navigate("/");
-      } else {
-        setUser(session.user);
-        await fetchUserData(session.user.id);
-      }
-    };
-    getSession();
-  }, [navigate]);
+    if (user) fetchUserData(user.id);
+  }, [user]);
 
   const fetchUserData = async (uid) => {
     try {
@@ -145,12 +136,7 @@ function Profile() {
   };
 
   const handleLogout = async () => {
-    try {
-      await supabase.auth.signOut();
-      navigate("/");
-    } catch (err) {
-      console.error("Error signing out:", err);
-    }
+    await supabase.auth.signOut();
   };
 
   const getInitials = (name) => {
