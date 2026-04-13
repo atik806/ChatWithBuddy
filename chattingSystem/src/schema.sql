@@ -20,6 +20,14 @@ CREATE TABLE users (
   "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+CREATE TABLE blocked_users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  blocker_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  blocked_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(blocker_id, blocked_id)
+);
+
 CREATE TABLE conversations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   participants UUID[] NOT NULL DEFAULT '{}',
@@ -50,6 +58,7 @@ CREATE TABLE messages (
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE blocked_users ENABLE ROW LEVEL SECURITY;
 
 -- ============================================
 -- POLICIES - USERS
@@ -62,6 +71,17 @@ DROP POLICY IF EXISTS "Users can insert own profile" ON users;
 CREATE POLICY "Users can view all profiles" ON users FOR SELECT USING (true);
 CREATE POLICY "Users can update own profile" ON users FOR UPDATE USING (auth.uid() = id);
 CREATE POLICY "Users can insert own profile" ON users FOR INSERT WITH CHECK (true);
+
+-- ============================================
+-- POLICIES - BLOCKED USERS
+-- ============================================
+
+DROP POLICY IF EXISTS "Users can manage own blocks" ON blocked_users;
+DROP POLICY IF EXISTS "Users can view own blocks" ON blocked_users;
+
+CREATE POLICY "Users can view own blocks" ON blocked_users FOR SELECT USING (auth.uid() = blocker_id);
+CREATE POLICY "Users can manage own blocks" ON blocked_users FOR INSERT WITH CHECK (auth.uid() = blocker_id);
+CREATE POLICY "Users can delete own blocks" ON blocked_users FOR DELETE USING (auth.uid() = blocker_id);
 
 -- ============================================
 -- POLICIES - CONVERSATIONS
