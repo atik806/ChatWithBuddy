@@ -112,7 +112,7 @@ function Chat() {
             if (otherUserId) {
               const { data: otherUser } = await supabase
                 .from("users")
-                .select("id, displayName, email")
+                .select("id, displayName, email, avatarUrl")
                 .eq("id", otherUserId)
                 .single();
               return { ...convo, otherUser };
@@ -156,7 +156,7 @@ function Chat() {
     try {
       const { data, error } = await supabase
         .from("users")
-        .select("id, displayName, email")
+        .select("id, displayName, email, avatarUrl")
         .ilike("displayName", `%${query}%`)
         .neq("id", user?.id);
 
@@ -314,7 +314,11 @@ function Chat() {
       <aside className="sidebar">
         <div className="user-profile">
           <div className="avatar">
-            {getInitials(userData?.displayName || user.email)}
+            {userData?.avatarUrl ? (
+              <img src={userData.avatarUrl} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+            ) : (
+              getInitials(userData?.displayName || user.email)
+            )}
           </div>
           <div className="user-info">
             <h3>{userData?.displayName || user.email?.split('@')[0] || "User"}</h3>
@@ -394,7 +398,11 @@ function Chat() {
                 onClick={() => setSelectedChat(convo)}
               >
                 <div className="avatar">
-                  {getInitials(convo.otherUser?.displayName)}
+                  {convo.otherUser?.avatarUrl ? (
+                    <img src={convo.otherUser.avatarUrl} alt={convo.otherUser.displayName} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+                  ) : (
+                    getInitials(convo.otherUser?.displayName)
+                  )}
                 </div>
                 <div className="convo-info">
                   <div className="convo-header">
@@ -416,7 +424,11 @@ function Chat() {
           <>
             <div className="chat-header">
               <div className="avatar">
-                {getInitials(selectedChat.otherUser?.displayName)}
+                {selectedChat.otherUser?.avatarUrl ? (
+                  <img src={selectedChat.otherUser.avatarUrl} alt={selectedChat.otherUser.displayName} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+                ) : (
+                  getInitials(selectedChat.otherUser?.displayName)
+                )}
               </div>
               <div className="chat-user-info">
                 <h3>{selectedChat.otherUser?.displayName || "Unknown User"}</h3>

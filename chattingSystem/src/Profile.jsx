@@ -77,31 +77,68 @@ function Profile() {
     const file = e.target.files[0];
     if (!file) return;
 
+    // Validate file type
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (!validTypes.includes(file.type)) {
+      setError('Please upload a valid image file (JPEG, PNG, GIF, or WebP)');
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    const maxSize = 5 * 1024 * 1024; // 5MB in bytes
+    if (file.size > maxSize) {
+      setError('Image size must be less than 5MB');
+      return;
+    }
+
     setLoading(true);
+    setError("");
+    setMessage("");
+
     try {
+      // Delete old avatar if exists
+      if (userData?.avatarUrl) {
+        const oldPath = userData.avatarUrl.split('/').pop();
+        if (oldPath) {
+          await supabase.storage
+            .from("avatars")
+            .remove([`avatars/${oldPath}`]);
+        }
+      }
+
+      // Upload new avatar
       const fileExt = file.name.split('.').pop();
       const fileName = `${user.id}-${Date.now()}.${fileExt}`;
-      const filePath = `avatars/${fileName}`;
+      const filePath = `${user.id}/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from("avatars")
-        .upload(filePath, file);
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
 
       if (uploadError) throw uploadError;
 
+      // Get public URL
       const { data: { publicUrl } } = supabase.storage
         .from("avatars")
         .getPublicUrl(filePath);
 
-      await supabase
+      // Update user profile
+      const { error: updateError } = await supabase
         .from("users")
         .update({ avatarUrl: publicUrl })
         .eq("id", user.id);
 
+      if (updateError) throw updateError;
+
       setUserData({ ...userData, avatarUrl: publicUrl });
-      setMessage("Avatar updated successfully!");
+      setMessage("Profile picture updated successfully!");
+      setTimeout(() => setMessage(""), 3000);
     } catch (err) {
-      setError(err.message);
+      console.error("Avatar upload error:", err);
+      setError(err.message || "Failed to upload profile picture");
     } finally {
       setLoading(false);
     }
