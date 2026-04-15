@@ -16,6 +16,12 @@ function Chat() {
   const [showSearch, setShowSearch] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
   const [messages, setMessages] = useState([]);
+  const [showMessageSearch, setShowMessageSearch] = useState(false);
+  const [messageSearchQuery, setMessageSearchQuery] = useState("");
+  const [messageFilter, setMessageFilter] = useState("all");
+  const [filteredMessages, setFilteredMessages] = useState([]);
+  const messageRefs = useRef({});
+  const [showChatInfo, setShowChatInfo] = useState(false);
   const [message, setMessage] = useState("");
   const [imageUploading, setImageUploading] = useState(false);
   const [fileUploading, setFileUploading] = useState(false);
@@ -154,6 +160,58 @@ function Chat() {
 
     setSearchResults(data || []);
     setSearchLoading(false);
+  };
+
+  const handleMessageSearch = (query) => {
+    setMessageSearchQuery(query);
+    if (!query.trim() && messageFilter === "all") {
+      setFilteredMessages([]);
+      return;
+    }
+
+    let results = [...messages];
+    
+    if (messageFilter === "images") {
+      results = results.filter(m => m.image_url);
+    } else if (messageFilter === "files") {
+      results = results.filter(m => m.file_url);
+    } else if (messageFilter === "sent") {
+      results = results.filter(m => m.sender_id === user.id);
+    } else if (messageFilter === "received") {
+      results = results.filter(m => m.sender_id !== user.id);
+    }
+
+    if (query.trim()) {
+      results = results.filter(m => 
+        m.text?.toLowerCase().includes(query.toLowerCase()) ||
+        m.sender_name?.toLowerCase().includes(query.toLowerCase())
+      );
+    }
+
+    setFilteredMessages(results);
+  };
+
+  const handleFilterChange = (filter) => {
+    setMessageFilter(filter);
+    handleMessageSearch(messageSearchQuery);
+  };
+
+  const jumpToMessage = (msgId) => {
+    const msgElement = messageRefs.current[msgId];
+    if (msgElement) {
+      msgElement.scrollIntoView({ behavior: "smooth", block: "center" });
+      msgElement.classList.add("highlight-message");
+      setTimeout(() => msgElement.classList.remove("highlight-message"), 2000);
+    }
+    setShowMessageSearch(false);
+    setMessageSearchQuery("");
+    setFilteredMessages([]);
+  };
+
+  const getMessagePreview = (msg) => {
+    if (msg.image_url) return "📷 Image";
+    if (msg.file_url) return `📎 ${msg.file_name}`;
+    return msg.text?.length > 50 ? msg.text.substring(0, 50) + "..." : msg.text;
   };
 
   const startConversation = async (otherUser) => {
@@ -486,16 +544,137 @@ function Chat() {
         {selectedChat ? (
           <>
             <div className="chat-header">
-              <div className="avatar">
-                {selectedChat.otherUser?.avatarUrl ? (
-                  <img src={selectedChat.otherUser.avatarUrl} alt={selectedChat.otherUser.displayName} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} />
-                ) : getInitials(selectedChat.otherUser?.displayName)}
+              <button className="back-to-conversations" onClick={() => setSelectedChat(null)} title="Back to conversations">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+                  <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+                </svg>
+              </button>
+              <div className="chat-header-info" onClick={() => setShowChatInfo(!showChatInfo)}>
+                <div className="avatar">
+                  {selectedChat.otherUser?.avatarUrl ? (
+                    <img src={selectedChat.otherUser.avatarUrl} alt={selectedChat.otherUser.displayName} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} />
+                  ) : getInitials(selectedChat.otherUser?.displayName)}
+                </div>
+                <div className="chat-user-info">
+                  <h3>{selectedChat.otherUser?.displayName || "Unknown User"}</h3>
+                  <p>{selectedChat.otherUser?.email}</p>
+                </div>
               </div>
-              <div className="chat-user-info">
-                <h3>{selectedChat.otherUser?.displayName || "Unknown User"}</h3>
-                <p>{selectedChat.otherUser?.email}</p>
-              </div>
+              <button className={`info-btn ${showChatInfo ? "active" : ""}`} onClick={() => setShowChatInfo(!showChatInfo)} title="Chat Info">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+                  <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+                </svg>
+              </button>
             </div>
+
+            {showChatInfo && (
+              <div className="chat-info-panel">
+                <div className="chat-info-header">
+                  <button className="back-btn" onClick={() => setShowChatInfo(false)}>
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                      <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+                    </svg>
+                    Back
+                  </button>
+                  <h3>Chat Info</h3>
+                </div>
+                
+                <div className="chat-info-user">
+                  <div className="info-avatar">
+                    {selectedChat.otherUser?.avatarUrl ? (
+                      <img src={selectedChat.otherUser.avatarUrl} alt={selectedChat.otherUser.displayName} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} />
+                    ) : getInitials(selectedChat.otherUser?.displayName)}
+                  </div>
+                  <h4>{selectedChat.otherUser?.displayName || "Unknown User"}</h4>
+                  <p>{selectedChat.otherUser?.email}</p>
+                </div>
+
+                <div className="chat-info-section">
+                  <h4>Search Messages</h4>
+                  <div className="search-input-wrapper">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" className="search-icon">
+                      <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+                    </svg>
+                    <input
+                      type="text"
+                      placeholder="Search in conversation..."
+                      value={messageSearchQuery}
+                      onChange={(e) => handleMessageSearch(e.target.value)}
+                    />
+                    {messageSearchQuery && (
+                      <button className="clear-search" onClick={() => { setMessageSearchQuery(""); setFilteredMessages([]); }}>
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                          <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                  
+                  <div className="filter-tabs">
+                    <button className={`filter-tab ${messageFilter === "all" ? "active" : ""}`} onClick={() => handleFilterChange("all")}>All</button>
+                    <button className={`filter-tab ${messageFilter === "images" ? "active" : ""}`} onClick={() => handleFilterChange("images")}>📷</button>
+                    <button className={`filter-tab ${messageFilter === "files" ? "active" : ""}`} onClick={() => handleFilterChange("files")}>📎</button>
+                    <button className={`filter-tab ${messageFilter === "sent" ? "active" : ""}`} onClick={() => handleFilterChange("sent")}>Sent</button>
+                    <button className={`filter-tab ${messageFilter === "received" ? "active" : ""}`} onClick={() => handleFilterChange("received")}>Received</button>
+                  </div>
+
+                  <div className="search-results-list">
+                    {filteredMessages.length === 0 ? (
+                      <div className="no-search-results">
+                        {messageSearchQuery || messageFilter !== "all" ? "No messages found" : "Type to search messages"}
+                      </div>
+                    ) : (
+                      filteredMessages.map(msg => (
+                        <div key={msg.id} className={`search-message-item ${msg.sender_id === user.id ? "sent" : "received"}`} onClick={() => jumpToMessage(msg.id)}>
+                          <div className="search-msg-avatar">
+                            <span className={`sender-badge ${msg.sender_id === user.id ? "sent" : "received"}`}>
+                              {msg.sender_id === user.id ? "You" : msg.sender_name?.charAt(0).toUpperCase()}
+                            </span>
+                          </div>
+                          <div className="search-msg-content">
+                            <div className="search-msg-preview">{getMessagePreview(msg)}</div>
+                            <div className="search-msg-time">
+                              {new Date(msg.timestamp).toLocaleDateString()} at {new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            </div>
+                          </div>
+                          <div className="jump-icon">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                              <path d="M8 5v14l11-7z"/>
+                            </svg>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div className="search-stats">
+                    {messages.length} messages • {filteredMessages.length} shown
+                  </div>
+                </div>
+
+                <div className="chat-info-section">
+                  <h4>Conversation Stats</h4>
+                  <div className="stats-grid">
+                    <div className="stat-item">
+                      <span className="stat-value">{messages.length}</span>
+                      <span className="stat-label">Total Messages</span>
+                    </div>
+                    <div className="stat-item">
+                      <span className="stat-value">{messages.filter(m => m.sender_id === user.id).length}</span>
+                      <span className="stat-label">Sent</span>
+                    </div>
+                    <div className="stat-item">
+                      <span className="stat-value">{messages.filter(m => m.image_url).length}</span>
+                      <span className="stat-label">Images</span>
+                    </div>
+                    <div className="stat-item">
+                      <span className="stat-value">{messages.filter(m => m.file_url).length}</span>
+                      <span className="stat-label">Files</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="messages-container">
               {messages.length === 0 ? (
@@ -503,7 +682,7 @@ function Chat() {
               ) : (
                 <>
                   {messages.map(msg => (
-                    <div key={msg.id} className={`message ${msg.sender_id === user.id ? "sent" : "received"}`}>
+                    <div key={msg.id} ref={el => messageRefs.current[msg.id] = el} className={`message ${msg.sender_id === user.id ? "sent" : "received"}`}>
                       <div className="message-content">
                         {msg.image_url ? (
                           <div className="message-image">
